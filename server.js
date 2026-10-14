@@ -1,5 +1,6 @@
 const express = require('express');
 const http = require('http');
+const https = require('https');
 const fs = require('fs');
 const path = require('path');
 const { execSync, spawn } = require('child_process');
@@ -7,6 +8,25 @@ const { execSync, spawn } = require('child_process');
 // ─── Setup ──────────────────────────────────────────────────────────────────────
 const app = express();
 const PORT = process.env.PORT || 3000;
+const isRenderDeployment = Boolean(process.env.RENDER || process.env.RENDER_EXTERNAL_URL);
+
+function configuredCameraUrl() {
+  const value = process.env.PRINTER_CAMERA_URL?.trim();
+  if (!value) return null;
+
+  try {
+    const url = new URL(value);
+    if (!['http:', 'https:'].includes(url.protocol) || !url.hostname || url.username || url.password) {
+      throw new Error('must be an HTTP or HTTPS URL without credentials');
+    }
+    url.hash = '';
+    return url;
+  } catch (error) {
+    throw new Error(`Invalid PRINTER_CAMERA_URL: ${error.message}`);
+  }
+}
+
+const cameraUrlFromEnvironment = configuredCameraUrl();
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
@@ -87,6 +107,34 @@ function validateIp(ip) {
   return /^[\d.]+$/.test(ip) || /^[a-zA-Z0-9.\-]+$/.test(ip);
 }
 
+/** Build the camera stream URL from a local IP or a configured secure tunnel. */
+function getCameraStreamUrl(printerAddress) {
+  let cameraUrl;
+
+  if (cameraUrlFromEnvironment) {
+    cameraUrl = new URL(cameraUrlFromEnvironment);
+  } else {
+    if (isRenderDeployment) {
+      const error = new Error('This Render service cannot access a private printer IP. Configure PRINTER_CAMERA_URL with a secure tunnel URL, or run the app on the same local network as the printer.');
+      error.statusCode = 503;
+      throw error;
+    }
+    if (!printerAddress || !validateIp(printerAddress)) {
+      const error = new Error('Valid printer IP is required');
+      error.statusCode = 400;
+      throw error;
+    }
+    cameraUrl = new URL(`http://${printerAddress}:8080/`);
+  }
+
+  cameraUrl.searchParams.set('action', 'stream');
+  return cameraUrl.toString();
+}
+
+function getCameraRequest(url, options, callback) {
+  return (url.startsWith('https:') ? https : http).get(url, options, callback);
+}
+
 /** Format seconds into human-readable duration */
 function formatDuration(seconds) {
   const h = Math.floor(seconds / 3600);
@@ -109,19 +157,25 @@ function formatBytes(bytes) {
  * Goes directly to the MJPEG stream and extracts the first frame.
  * (The Adventurer 3 firmware does not support ?action=snapshot)
  */
-function captureSnapshot(ip) {
-  return captureFrameFromStream(ip);
+function captureSnapshot(printerAddress) {
+  return captureFrameFromStream(printerAddress);
 }
 
 /**
  * Grab the first complete JPEG frame from the MJPEG stream
  * by looking for SOI (0xFFD8) and EOI (0xFFD9) markers.
  */
-function captureFrameFromStream(ip) {
+function captureFrameFromStream(printerAddress) {
   return new Promise((resolve, reject) => {
-    const url = `http://${ip}:8080/?action=stream`;
+    let url;
+    try {
+      url = getCameraStreamUrl(printerAddress);
+    } catch (error) {
+      reject(error);
+      return;
+    }
 
-    const req = http.get(url, { timeout: 10000 }, (res) => {
+    const req = getCameraRequest(url, { timeout: 10000 }, (res) => {
       let buffer = Buffer.alloc(0);
 
       res.on('data', (chunk) => {
@@ -161,13 +215,14 @@ function captureFrameFromStream(ip) {
 
 app.get('/api/stream', (req, res) => {
   const ip = req.query.ip;
-  if (!ip || !validateIp(ip)) {
-    return res.status(400).json({ error: 'Valid printer IP is required' });
+  let url;
+  try {
+    url = getCameraStreamUrl(ip);
+  } catch (error) {
+    return res.status(error.statusCode || 400).json({ error: error.message });
   }
 
-  const url = `http://${ip}:8080/?action=stream`;
-
-  const proxyReq = http.get(url, { timeout: 10000 }, (proxyRes) => {
+  const proxyReq = getCameraRequest(url, { timeout: 10000 }, (proxyRes) => {
     res.writeHead(200, {
       'Content-Type': proxyRes.headers['content-type'] || 'multipart/x-mixed-replace',
       'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -199,16 +254,21 @@ app.get('/api/stream', (req, res) => {
 
 app.get('/api/test', async (req, res) => {
   const ip = req.query.ip;
-  if (!ip || !validateIp(ip)) {
-    return res.status(400).json({ error: 'Valid printer IP is required' });
-  }
 
   try {
     const frame = await captureSnapshot(ip);
     res.json({ success: true, message: 'Camera connected', frameSize: frame.length });
   } catch (err) {
-    res.status(502).json({ success: false, error: 'Cannot reach camera', details: err.message });
+    res.status(err.statusCode || 502).json({ success: false, error: err.statusCode ? err.message : 'Cannot reach camera', details: err.statusCode ? undefined : err.message });
   }
+});
+
+app.get('/api/config', (req, res) => {
+  res.json({
+    isRenderDeployment,
+    cameraConfigured: Boolean(cameraUrlFromEnvironment),
+    cameraAddress: cameraUrlFromEnvironment?.host || null,
+  });
 });
 
 // ─── API: Timelapse ─────────────────────────────────────────────────────────────
@@ -220,9 +280,6 @@ app.post('/api/timelapse/start', async (req, res) => {
   }
 
   const { ip, interval = 10 } = req.body;
-  if (!ip || !validateIp(ip)) {
-    return res.status(400).json({ error: 'Valid printer IP is required' });
-  }
   if (interval < 1 || interval > 3600) {
     return res.status(400).json({ error: 'Interval must be between 1 and 3600 seconds' });
   }
@@ -231,7 +288,7 @@ app.post('/api/timelapse/start', async (req, res) => {
   try {
     await captureSnapshot(ip);
   } catch (err) {
-    return res.status(502).json({ error: 'Cannot connect to printer camera', details: err.message });
+    return res.status(err.statusCode || 502).json({ error: err.statusCode ? err.message : 'Cannot connect to printer camera', details: err.statusCode ? undefined : err.message });
   }
 
   const id = Date.now().toString();

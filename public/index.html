@@ -21,12 +21,17 @@
   </header>
 
   <main>
+    <section id="deploymentWarning" class="card card-warning" hidden>
+      <h3>Remote printer connection needed</h3>
+      <p id="deploymentWarningText"></p>
+    </section>
+
     <!-- Connect Panel -->
     <section id="connectPanel" class="card">
       <h2>🔌 Connect to Printer</h2>
       <div class="connect-row">
         <div class="input-group">
-          <label for="printerIp">Printer IP Address</label>
+          <label for="printerIp" id="printerAddressLabel">Printer IP Address</label>
           <input type="text" id="printerIp" placeholder="192.168.0.113" value="192.168.0.113" spellcheck="false" autocomplete="off">
         </div>
         <button id="connectBtn" class="btn btn-primary">Connect</button>

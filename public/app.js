@@ -7,6 +7,9 @@ const connectError = $('connectError');
 const connectionBadge = $('connectionBadge');
 const mainContent = $('mainContent');
 const gallerySection = $('gallerySection');
+const deploymentWarning = $('deploymentWarning');
+const deploymentWarningText = $('deploymentWarningText');
+const printerAddressLabel = $('printerAddressLabel');
 
 const cameraFeed = $('cameraFeed');
 const feedPlaceholder = $('feedPlaceholder');
@@ -30,6 +33,30 @@ const galleryEmpty = $('galleryEmpty');
 // ─── State ───────────────────────────────────────────────────────────────────
 let connectedIp = null;
 let statusPollTimer = null;
+
+async function loadConnectionConfig() {
+  try {
+    const res = await fetch('/api/config');
+    const config = await res.json();
+
+    if (config.cameraConfigured) {
+      printerIpInput.value = config.cameraAddress;
+      printerIpInput.disabled = true;
+      printerAddressLabel.textContent = 'Camera tunnel (configured on server)';
+      return;
+    }
+
+    if (config.isRenderDeployment) {
+      deploymentWarningText.textContent = 'Render cannot reach a private home-network printer IP. Configure PRINTER_CAMERA_URL in Render with a secure tunnel URL, or run this app on a computer connected to the printer network.';
+      deploymentWarning.hidden = false;
+      connectBtn.disabled = true;
+    }
+  } catch (err) {
+    console.warn('Could not load connection configuration:', err);
+  }
+}
+
+loadConnectionConfig();
 
 // ─── Connection ──────────────────────────────────────────────────────────────
 
