@@ -4,8 +4,6 @@ const fs = require('fs');
 const path = require('path');
 const { execSync, spawn } = require('child_process');
 
-const archiver = require('archiver');
-
 // ─── Setup ──────────────────────────────────────────────────────────────────────
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -27,16 +25,56 @@ try {
 }
 
 /** Package directory into a zip file */
-function zipDirectory(sourceDir, outPath) {
-  return new Promise((resolve, reject) => {
-    const output = fs.createWriteStream(outPath);
-    const archive = archiver('zip', { zlib: { level: 6 } });
-    output.on('close', () => resolve(output.bytesWritten));
-    archive.on('error', (err) => reject(err));
-    archive.pipe(output);
-    archive.directory(sourceDir, false);
-    archive.finalize();
-  });
+async function zipDirectory(sourceDir, outPath) {
+  const frameFiles = fs.readdirSync(sourceDir, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith('.jpg'))
+    .map((entry) => entry.name)
+    .sort();
+
+  if (frameFiles.length === 0) {
+    throw new Error('No JPEG frames found to include in the ZIP');
+  }
+
+  const { ZipArchive } = await import('archiver');
+  const temporaryPath = `${outPath}.tmp-${process.pid}-${Date.now()}`;
+
+  try {
+    const zipSize = await new Promise((resolve, reject) => {
+      const output = fs.createWriteStream(temporaryPath);
+      const archive = new ZipArchive({ zlib: { level: 6 } });
+      let settled = false;
+
+      const fail = (error) => {
+        if (settled) return;
+        settled = true;
+        output.destroy();
+        reject(error);
+      };
+
+      output.on('close', () => {
+        if (!settled) {
+          settled = true;
+          resolve(output.bytesWritten);
+        }
+      });
+      output.on('error', fail);
+      archive.on('error', fail);
+      archive.on('warning', fail);
+      archive.pipe(output);
+
+      for (const frameFile of frameFiles) {
+        archive.file(path.join(sourceDir, frameFile), { name: frameFile });
+      }
+
+      archive.finalize().catch(fail);
+    });
+
+    await fs.promises.rename(temporaryPath, outPath);
+    return zipSize;
+  } catch (error) {
+    await fs.promises.rm(temporaryPath, { force: true }).catch(() => {});
+    throw error;
+  }
 }
 
 // ─── State ──────────────────────────────────────────────────────────────────────
@@ -416,7 +454,7 @@ app.get('/api/timelapse/download/:id', async (req, res) => {
     return res.download(videoPath, `timelapse_${id}.mp4`);
   }
 
-  if (fs.existsSync(zipPath)) {
+  if (fs.existsSync(zipPath) && fs.statSync(zipPath).size > 0) {
     return res.download(zipPath, `timelapse_${id}_frames.zip`);
   }
 
