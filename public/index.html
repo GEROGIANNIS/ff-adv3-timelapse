@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FF Adv3 — Camera & Timelapse</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Header -->
+  <header>
+    <div class="header-brand">
+      <span class="header-icon">🎥</span>
+      <div>
+        <h1>FlashForge Adventurer 3</h1>
+        <p class="header-sub">Camera & Timelapse Recorder</p>
+      </div>
+    </div>
+    <div id="connectionBadge" class="badge badge-disconnected">Disconnected</div>
+  </header>
+
+  <main>
+    <!-- Connect Panel -->
+    <section id="connectPanel" class="card">
+      <h2>🔌 Connect to Printer</h2>
+      <div class="connect-row">
+        <div class="input-group">
+          <label for="printerIp">Printer IP Address</label>
+          <input type="text" id="printerIp" placeholder="192.168.0.113" value="192.168.0.113" spellcheck="false" autocomplete="off">
+        </div>
+        <button id="connectBtn" class="btn btn-primary">Connect</button>
+      </div>
+      <p id="connectError" class="error-text" hidden></p>
+    </section>
+
+    <!-- Live View + Controls -->
+    <div id="mainContent" class="main-grid" hidden>
+
+      <!-- Left: Camera Feed -->
+      <section class="card feed-card">
+        <div class="card-header">
+          <h2>📷 Live Feed</h2>
+          <div id="liveIndicator" class="live-dot">
+            <span class="dot"></span> LIVE
+          </div>
+        </div>
+        <div class="feed-container">
+          <img id="cameraFeed" alt="Camera feed" />
+          <div id="feedPlaceholder" class="feed-placeholder">
+            <span>Connecting to camera...</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Right: Controls -->
+      <aside class="controls-panel">
+
+        <!-- Timelapse Controls -->
+        <section class="card">
+          <h2>⏱ Timelapse</h2>
+
+          <div id="tlIdle">
+            <div class="input-group">
+              <label for="intervalSelect">Capture interval</label>
+              <select id="intervalSelect">
+                <option value="2">Every 2 seconds</option>
+                <option value="5">Every 5 seconds</option>
+                <option value="10" selected>Every 10 seconds</option>
+                <option value="30">Every 30 seconds</option>
+                <option value="60">Every 60 seconds</option>
+                <option value="120">Every 2 minutes</option>
+                <option value="300">Every 5 minutes</option>
+              </select>
+            </div>
+            <button id="startRecBtn" class="btn btn-record">
+              <span class="rec-icon">⏺</span> Start Recording
+            </button>
+          </div>
+
+          <div id="tlRecording" hidden>
+            <div class="recording-status">
+              <div class="rec-pulse"></div>
+              <span>Recording</span>
+            </div>
+            <div class="stats-grid">
+              <div class="stat">
+                <span class="stat-label">Frames</span>
+                <span id="statFrames" class="stat-value">0</span>
+              </div>
+              <div class="stat">
+                <span class="stat-label">Elapsed</span>
+                <span id="statElapsed" class="stat-value">0s</span>
+              </div>
+              <div class="stat">
+                <span class="stat-label">Interval</span>
+                <span id="statInterval" class="stat-value">10s</span>
+              </div>
+            </div>
+            <p id="captureError" class="error-text small" hidden></p>
+            <button id="stopRecBtn" class="btn btn-stop">
+              ⏹ Stop & Save Frames (ZIP)
+            </button>
+          </div>
+
+          <div id="tlProcessing" hidden>
+            <div class="processing-status">
+              <div class="spinner"></div>
+              <span>Packaging frames into ZIP...</span>
+            </div>
+          </div>
+        </section>
+
+      </aside>
+    </div>
+
+    <!-- Gallery -->
+    <section id="gallerySection" class="card" hidden>
+      <div class="card-header">
+        <h2>🎬 Timelapse Gallery</h2>
+        <button id="refreshGalleryBtn" class="btn btn-small btn-ghost">↻ Refresh</button>
+      </div>
+      <div id="galleryEmpty" class="gallery-empty">
+        <p>No timelapses yet. Start recording to create your first one!</p>
+      </div>
+      <div id="galleryList" class="gallery-grid"></div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

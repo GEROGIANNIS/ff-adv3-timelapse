@@ -1,0 +1,14 @@
+{
+  "name": "ff-adv3-cam",
+  "version": "1.0.0",
+  "description": "FlashForge Adventurer 3 — Camera Viewer & Timelapse Recorder",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "archiver": "^8.0.0",
+    "express": "^4.21.0"
+  }
+}
