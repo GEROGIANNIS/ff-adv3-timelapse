@@ -26,7 +26,6 @@ const captureError = $('captureError');
 const refreshGalleryBtn = $('refreshGalleryBtn');
 const galleryList = $('galleryList');
 const galleryEmpty = $('galleryEmpty');
-const ffmpegWarning = $('ffmpegWarning');
 
 // ─── State ───────────────────────────────────────────────────────────────────
 let connectedIp = null;
@@ -146,12 +145,8 @@ stopRecBtn.addEventListener('click', async () => {
     tlProcessing.hidden = true;
     tlIdle.hidden = false;
 
-    if (data.videoReady) {
-      alert(`✅ Timelapse created! ${data.frameCount} frames assembled.`);
-    } else if (data.frameCount > 0) {
-      alert(`⚠ ${data.message}`);
-      // Show ffmpeg warning if needed
-      ffmpegWarning.hidden = false;
+    if (data.zipReady || data.frameCount > 0) {
+      alert(`✅ Timelapse saved! ${data.frameCount} frames packaged into ZIP.`);
     } else {
       alert('No frames were captured.');
     }
@@ -265,9 +260,20 @@ async function loadGallery() {
 
       const metaParts = [];
       if (item.frameCount) metaParts.push(`${item.frameCount} frames`);
-      if (item.duration) metaParts.push(`${item.duration}s video`);
       if (item.interval) metaParts.push(`${item.interval}s interval`);
-      if (item.videoSizeFormatted) metaParts.push(item.videoSizeFormatted);
+      if (item.zipSizeFormatted) metaParts.push(`ZIP: ${item.zipSizeFormatted}`);
+      else if (item.videoSizeFormatted) metaParts.push(item.videoSizeFormatted);
+
+      let downloadBtns = '';
+      if (item.hasZip || item.frameCount > 0) {
+        downloadBtns += `<a href="/api/timelapse/download/${item.id}" class="btn btn-small btn-download">⬇ Download ZIP</a>`;
+      }
+      if (item.hasVideo) {
+        downloadBtns += ` <a href="/api/timelapse/download/${item.id}?type=video" class="btn btn-small btn-ghost">⬇ MP4</a>`;
+      }
+      if (!downloadBtns) {
+        downloadBtns = `<span class="btn btn-small" style="opacity:0.4;cursor:default">No files</span>`;
+      }
 
       el.innerHTML = `
         <div class="gallery-info">
@@ -275,11 +281,7 @@ async function loadGallery() {
           <span class="gallery-meta">${metaParts.map((p) => `<span>${p}</span>`).join('')}</span>
         </div>
         <div class="gallery-actions">
-          ${
-            item.hasVideo
-              ? `<a href="/api/timelapse/download/${item.id}" class="btn btn-small btn-download">⬇ Download</a>`
-              : `<span class="btn btn-small" style="opacity:0.4;cursor:default">No video</span>`
-          }
+          ${downloadBtns}
           <button class="btn btn-small btn-delete" data-id="${item.id}">🗑</button>
         </div>
       `;
